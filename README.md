@@ -127,6 +127,8 @@ units:
       chart:
         spec:
           version: "2.13.1"
+      values:
+        features: "embedded-cluster-api=false,provisioningv2=true,managed-system-upgrade-controller=false,turtles=true"
 ```
 
 ### Critical: preserve the full unit structure
