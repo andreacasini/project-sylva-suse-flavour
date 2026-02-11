@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: capi-dummy-placeholder
+  namespace: capi-system
+data:
+  info: "CAPI core operator replaced by rancher-turtles from Rancher 2.13.1"
