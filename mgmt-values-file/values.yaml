@@ -1,0 +1,473 @@
+##
+## Git repo definition for dummy capi helm chart
+##
+source_templates:
+  sylva-capi-dummy:                                                              # defines repo where a dummy helm chart resides to allow for capi unit
+    kind: GitRepository                                                          # to enter ready state without installing capi so that rancher-turtles
+    spec:                                                                        # can install capi crds and take over capi operations
+      url: https://github.com/andreacasini/project-sylva-suse-flavour.git
+      ref:
+        branch: main
+
+##
+## Helm values override are defined for specific units
+##
+metallb_helm_values:
+  controller:
+    image:
+      repository: registry.suse.com/edge/3.5/metallb-controller
+      tag: v0.15.2
+  speaker:
+    image:
+      repository: registry.suse.com/edge/3.5/metallb-speaker
+      tag: v0.15.2
+cilium_helm_values:
+  cni:
+    exclusive: false
+    chainingMode: "none"
+  enableIPv6Masquerade: false
+  global:
+    systemDefaultRegistry: registry.suse.com
+  operator:                                                                     # Necessary if you are running
+    replicas: 1                                                                 # a single node cluster
+
+##
+## Units definitions and overrides
+##
+units:
+  logging:
+    enabled: false                                                              # saving resources
+  monitoring:
+    enabled: false                                                              # saving resources
+  harbor:
+    enabled: false                                                              # saving resources
+  keycloak:
+    enabled: true
+  rancher-turtles:                                                              # rancher-turtles will be installed as part of rancher 2.13.x
+    enabled: false                                                              # needs to be disabled
+  coredns:
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "1.44.300"
+  cilium:
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "1.18.300"
+  multus:
+    enabled: true
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "v4.2.300"
+      values:
+        global:
+          systemDefaultRegistry: registry.suse.com
+  kubevirt:
+    enabled: false                                                              # tested but turned off to save resources
+    helm_repo_url: oci://registry.suse.com/edge/charts
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "305.0.1+up0.6.0"
+  kubevirt-cdi:
+    enabled: false                                                              # tested but turned off to save resources
+    helm_repo_url: oci://registry.suse.com/edge/charts
+    helm_chart_artifact_name: cdi
+    helmrelease_spec:
+      chart:
+        spec:
+          chart: cdi
+          version: "305.0.1+up0.6.0"
+  vault:
+    enabled: true
+    kustomization_spec:
+      timeout: 20m                                                              # raised to cope with my lab resources
+  eso-secret-stores:
+    kustomization_spec:
+      timeout: 20m                                                              # raised to cope with my lab resources
+  synchronize-secrets:
+    kustomization_spec:
+      timeout: 20m                                                              # raised to cope with my lab resources
+  kyverno:
+    enabled: true
+  kyverno-policy-prevent-mgmt-cluster-delete:
+    depends_on:                                                                 # This is necessary to avoid this unit to fail because
+      rancher: true                                                             # capi CRDs won't be there until rancher installs rancher-turtles
+    # kustomization_spec:
+    #   timeout: 120m
+  openbao:
+    kustomization_spec:
+      timeout: 20m                                                              # raised to cope with my lab resources
+  metal3:
+    helm_repo_url: oci://registry.suse.com/edge/charts
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "305.0.21+up0.13.0"
+      values:
+        global:
+          ironicKernelParams: 'console=tty3 suse.autologin=tty2 rootpwd="SuSE4EVER!"'
+          enable_vmedia_tls: false
+        metal3-ironic:
+          images:
+            ironicIPADownloader:
+              repository: registry.suse.com/edge/3.5/ironic-ipa-downloader
+  metallb:
+    helm_repo_url: oci://registry.suse.com/edge/charts
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "305.0.1+up0.15.2"
+  neuvector-init:
+    enabled: true
+  neuvector:
+    enabled: true
+  longhorn-crd:
+    enabled: true
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "107.2.0+up1.10.1"
+  longhorn:
+    enabled: true
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "107.2.0+up1.10.1"
+      values:
+        persistence:
+          defaultClassReplicaCount: 1
+        global:
+          cattle:
+            systemDefaultRegistry: registry.suse.com
+  local-path-provisioner:
+    helmrelease_spec:
+      values:
+        image:
+          repository: registry.suse.com/rancher/local-path-provisioner
+          tag: v0.0.32
+        helperImage:
+          repository: registry.suse.com/rancher/mirrored-library-busybox
+          tag: "1.37.0"
+        nodePathMap:
+          - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+            paths:
+              - /var/lib/kubelet
+  flux-webui:
+    kustomization_spec:
+      timeout: 20m                                                              # raised to cope with my lab resources
+  rancher:
+    helm_repo_url: https://charts.rancher.com/server-charts/prime
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "2.13.1"
+      values:
+        features: "embedded-cluster-api=false,provisioningv2=true,managed-system-upgrade-controller=false,turtles=true"     # rancher-turtles is enabled here
+        postDelete:
+          enabled: false
+  ingress-nginx:
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "4.13.400"
+      values:
+        global:
+          systemDefaultRegistry: registry.suse.com
+  metrics-server:
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "3.13.002"
+      values:
+        global:
+          systemDefaultRegistry: registry.suse.com
+  capi:
+    repo: '{{ .Values._internal.mgmt_cluster | ternary "sylva-capi-dummy" "sylva-core" }}'
+    unit_templates:
+      - base-deps
+    depends_on:
+      cert-manager: true
+    kustomization_spec:
+      path: '{{ .Values._internal.mgmt_cluster | ternary "./dummy-capi" "./kustomize-units/capi" }}'
+      postBuild:
+        substitute:
+          force_var_substitution_enabled: "true"
+      wait: true
+      _components:
+        - '{{ tuple "components/ha" (.Values._internal.ha_cluster.is_ha) | include "set-only-if" }}'
+  capm3:
+    kustomization_spec:
+      _patches:
+        - target:
+            group: apps
+            version: v1
+            kind: Deployment
+            name: capm3-controller-manager
+            namespace: capm3-system
+          patch: |-
+            - op: replace
+              path: /spec/template/spec/containers/0/image
+              value: registry.suse.com/rancher/cluster-api-provider-metal3:v1.10.4
+  metal3-ipam:
+    kustomization_spec:
+      _patches:
+        - target:
+            group: apps
+            version: v1
+            kind: Deployment
+            name: ipam-controller-manager
+            namespace: metal3-ipam-system
+          patch: |-
+            - op: replace
+              path: /spec/template/spec/containers/0/image
+              value: registry.rancher.com/rancher/ip-address-manager:v1.10.4
+##
+## Custom unit created to allow for rancher-turtles to deploy its own capi providers
+## At the moment deploying only providers that are not managed by sylva to avoid weird reconciliation loops that create certificates
+## misalignment with the CA, generating ssl exceptions.
+## Also limiting the capi providers installed by rancher-turtles to avoid conflicts in life cycle management with sylva provisioned capi providers
+##
+  suse-rancher-turtles-providers:
+    info:
+      description: installs Rancher Turtles CAPI Providers for SUSE Edge 3.5
+      maturity: stable
+    enabled: false
+    unit_templates:
+      - base-deps
+    depends_on:
+      rancher: true
+    helm_repo_url: oci://registry.suse.com/edge/charts
+    helm_chart_artifact_name: rancher-turtles-providers
+    helmrelease_spec:
+      install:
+        createNamespace: true
+      chart:
+        spec:
+          chart: rancher-turtles-providers
+          version: "305.0.4+up0.25.1"
+      targetNamespace: cattle-turtles-system
+      values:
+        providers:
+          infrastructureMetal3:
+            enabled: false                                                              # already provided by sylva
+          ipamMetal3:
+            enabled: false                                                              # already provided by sylva
+          bootstrapRKE2:
+            enabled: false                                                              # already provided by sylva
+          controlplaneRKE2:
+            enabled: false                                                              # already provided by sylva
+
+##
+## Custom SM Micro 6.2 image created with EIB
+##
+os_images:
+  slmicro-6-2-custom:
+    uri: http://10.140.1.2:8080/eib-132-image-slmicro-telco.raw
+    filename: eib-132-image-slmicro-telco.raw
+    md5: 67c1b48a1cb47d59622a344d394be50c
+    sha256: f90c8a6ca706ab28fe5bdc91d36bbdce9fd3eb79dbcbad3136ba1dc09643ccf0
+    image-format: raw
+os_image_server_additional_selectors:
+  my-custom-images:
+    os: slemicro
+    oci-image-registry-key: custom
+cluster_virtual_ip: 10.160.1.10                                                        # needs to be outside the pool of IP addresses later defined
+cluster:
+  helm_oci_url:
+    metallb: oci://registry.suse.com/edge/charts/metallb
+  # cni:
+  #   default_provider: cilium                                                         # use to enable cilium, validated but 'rke2-install.sh' script fails and requires manual intervention (https://sylva-projects.slack.com/archives/C04BQQANHA5/p1772644924656949)
+  coredns:
+    helm_values:
+      image:
+        repository: registry.suse.com/rancher/hardened-coredns
+        tag: "v1.13.1-build20251015"
+      autoscaler:
+        image:
+          repository: registry.suse.com/rancher/hardened-cluster-autoscaler
+          tag: "v1.10.2-build20251015"
+  agent_config_format: ignition                                                        # necessary for sl micro 
+  k8s_version: v1.34.2+rke2r1                                                          # to align with suse edge
+  capi_providers:
+    infra_provider: capm3
+    bootstrap_provider: cabpr
+  control_plane_replicas: 1
+  rke2:
+    additionalUserData:
+      config:
+        users:
+          - name: sylva-user                                                           # this doesn't work at the moment, probably sl micro related, same can be done in EIB if necessary
+            groups: users,sylva-ops
+            sudo: ALL=(ALL) NOPASSWD:ALL
+            shell: /bin/bash
+            lock_passwd: false
+            passwd: "SuSE4EVER"
+            ssh_authorized_keys:
+              - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOxAWTRqROr4/FiM1FN0d1t5Cz2/+LkI+8BFw84+8tpy andrea@thinkpad-ps14s-gen4
+  capm3:
+    image_key: slmicro-6-2-custom
+    networks:
+      primary:
+        subnet: 10.160.1.0/24
+        gateway: 10.160.1.254
+        start: 10.160.1.32     # Static IP Addresses used to be dynamically assigned
+        end: 10.160.1.34       # to baremetal hosts after deployment
+      provisioning:
+        subnet: 10.150.1.0/24
+        start: 10.150.1.110   # Static IP Addresses used to be dynamically assigned
+        end: 10.150.1.112     # to baremetal hosts after deployment
+    dns_servers:
+    - 192.168.1.254
+    - 8.8.8.8
+  control_plane:
+    capm3:
+      hostSelector:  # criteria for matching labels on BareMetalHost objects defined by baremetal_hosts value
+        matchLabels:
+          cluster-role: control-plane
+      networks:
+        primary:
+          interface: enp3s0
+        provisioning:
+          interface: enp4s0
+    network_interfaces:
+      enp3s0:
+        type: phy
+      enp4s0:
+        type: phy
+  machine_deployment_default:
+    capm3:
+      hostSelector:
+        matchLabels:
+          cluster-role: worker
+      networks:
+        primary:
+          interface: enp3s0
+        provisioning:
+          interface: enp4s0
+  machine_deployments:
+    md0:
+      replicas: 0
+      network_interfaces:
+        enp3s0:
+          type: phy
+        enp4s0:
+          type: phy
+  baremetal_host_default:
+    longhorn_disk_config:
+      - path: "/var/longhorn/disks/disk_by-path_virtio-pci-0000:09:00.0"
+        storageReserved: 0
+        allowScheduling: true
+        tags:
+          - vhdd
+          - fast
+    bmh_spec:
+      online: true     # necessary in sylva 1.6.x
+      externallyProvisioned: false
+      bmc:
+        disableCertificateVerification: true
+      rootDeviceHints:  # https://github.com/metal3-io/baremetal-operator/blob/main/docs/api.md#rootdevicehints
+        deviceName: /dev/vda
+  baremetal_hosts:  # corresponding credentials need to be set in secrets.yaml
+    mgmt-server:
+      bmh_metadata:
+        labels:
+          cluster-role: control-plane
+      ip_preallocations:     # necessary in order to have sl micro cope with static ip assignment; sl micro doesn't work with metal3-ipam (known issue)
+        primary: 10.160.1.32
+        provisioning: 10.150.1.110
+      bmh_spec:
+        description: management server
+        bmc:
+          address: redfish-virtualmedia+http://10.140.1.2:8000/redfish/v1/Systems/9115bf05-896d-493b-a358-c7f471f26f75
+          disableCertificateVerification: true
+        bootMACAddress: aa:aa:aa:bb:bb:5a
+metal3:
+  bootstrap_ip: 10.140.1.29     # the bootstrap vm
+proxies:
+  http_proxy: ""
+  https_proxy: ""
+  no_proxy: ""
+ntp:
+  enabled: false
+  servers:
+  # - 1.2.3.4
+  # - 1.2.3.5
+
+##
+## This was an experiment to allow for Neuvector to be deployed and configured as in SUSE Edge without dependencies from other sylva units.
+## Tested but not used as of now.
+##
+# units:
+#   suse-neuvector-init:
+#     info:
+#       description: creates neuvector namespace with privileged PSA labels
+#       maturity: stable
+#     enabled: false
+#     unit_templates:
+#       - base-deps
+#     depends_on: {}
+#     repo: sylva-capi-dummy
+#     kustomization_spec:
+#       path: ./suse-neuvector-init
+#       wait: true
+#       prune: false
+#   suse-neuvector-crd:
+#     info:
+#       description: installs NeuVector CRDs for SUSE Edge 3.5
+#       maturity: stable
+#     depends_on:
+#       suse-neuvector-init: true
+#     enabled: false
+#     unit_templates:
+#       - base-deps
+#     helm_repo_url: https://charts.rancher.io
+#     helmrelease_spec:
+#       install:
+#         createNamespace: true
+#       chart:
+#         spec:
+#           chart: neuvector-crd
+#           version: "108.0.1+up2.8.10"
+#       targetNamespace: neuvector
+#   suse-neuvector:
+#     info:
+#       description: installs NeuVector for SUSE Edge 3.5
+#       maturity: stable
+#     enabled: false
+#     unit_templates:
+#       - base-deps
+#     depends_on:
+#       suse-neuvector-crd: true
+#     helm_repo_url: https://charts.rancher.io
+#     helmrelease_spec:
+#       install:
+#         createNamespace: true
+#       driftDetection:
+#         mode: disabled
+#       chart:
+#         spec:
+#           chart: neuvector
+#           version: "108.0.1+up2.8.10"
+#       targetNamespace: neuvector
+#       values:
+#         controller:
+#           ranchersso:
+#             enabled: true
+#           replicas: 1
+#         crdwebhook:
+#           enabled: false
+#         cve:
+#           scanner:
+#             enabled: false
+#             replicas: 1
+#         global:
+#           cattle:
+#             systemDefaultRegistry: registry.rancher.com
+#         k3s:
+#           enabled: true
+#         manager:
+#           enabled: false
+#         registry: registry.rancher.com
