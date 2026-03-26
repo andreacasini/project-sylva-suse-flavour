@@ -108,7 +108,7 @@ units:
           version: "305.0.21+up0.13.0"
       values:
         global:
-          ironicKernelParams: 'console=tty3 suse.autologin=tty2 rootpwd="SuSE4EVER!"'
+          ironicKernelParams: 'console=tty3 suse.autologin=tty2 rootpwd="XXXXXXXX!"'
           enable_vmedia_tls: false
         metal3-ironic:
           images:
@@ -304,9 +304,9 @@ cluster:
             sudo: ALL=(ALL) NOPASSWD:ALL
             shell: /bin/bash
             lock_passwd: false
-            passwd: "SuSE4EVER"
+            passwd: "XXXXXXXX"
             ssh_authorized_keys:
-              - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOxAWTRqROr4/FiM1FN0d1t5Cz2/+LkI+8BFw84+8tpy andrea@thinkpad-ps14s-gen4
+              - ssh-ed25519 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
   capm3:
     image_key: slmicro-6-2-custom
     networks:
