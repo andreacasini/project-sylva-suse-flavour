@@ -189,6 +189,13 @@ These control the overall script timeout, NOT the per-unit timeout:
 
 For slow homelab hardware, increasing `MGMT_WATCH_TIMEOUT_MIN` helps the overall script timeout but does not affect the 5-minute per-unit timeout in `sylvactl`.
 
+Final resolution to this is adding a dependancy to Rancher so that it doesn't start at the wrong moment:
+```
+  kyverno-policy-prevent-mgmt-cluster-delete:
+    depends_on:
+      rancher: true
+```
+
 ## Verification
 
 After deployment, on the management cluster:
