@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This effort aimed to align an open-source Sylva 1.6.x deployment with SUSE Edge 3.5, the commercial Telco Cloud offering that shares a similar technical stack. The primary focus was ensuring Helm charts and container images originate from the same sources as SUSE Edge, enabling consistency for support scenarios and knowledge transfer. 
+This effort aimed to align an open-source Sylva 1.6.x deployment with SUSE Edge 3.5, the commercial Telco Cloud offering that shares a similar technical stack. The primary focus was ensuring Helm charts and container images originate from the same sources as SUSE Edge, enabling consistency for support scenarios and knowledge transfer. Configuration drift between the two deployments is acceptable—the priority is provenance alignment, not identical configurations.
 
 **Status**: A fully functional management cluster has been deployed with charts and images aligned to SUSE Edge sources. Workload cluster deployment has been validated using the conventional Sylva workflow, with alignment work remaining as a straightforward next step.
 
@@ -20,8 +20,8 @@ SUSE Edge 3.5 targets SL Micro as the deployment operating system. Aligning the 
 
 SL Micro images were built using a two-stage process:
 
-1. **KIWI Base Image**: Boot a SL Micro 6.2 system and use the SUSE Edge kiwi-builder container to produce a raw base image
-2. **EIB Customization**: Edge Image Builder (EIB) processes the base image, adding telco-specific packages (DPDK, dpdk-tools, pf-bb-config, tuned, cpupower, open-iscsi) and configuring kernel arguments, systemd services, and user credentials
+1. **KIWI Base Image**: Boot a SL Micro 6.2 system and use the SUSE Edge kiwi-builder container (`registry.suse.com/edge/3.5/kiwi-builder:10.2.29.1`) to produce a raw base image
+2. **EIB Customization**: Edge Image Builder (`registry.suse.com/edge/3.4/edge-image-builder:1.3.0`) processes the base image, adding telco-specific packages (DPDK, dpdk-tools, pf-bb-config, tuned, cpupower, open-iscsi, jq) and configuring kernel arguments, systemd services, and user credentials
 
 The EIB definition sets `ignition.platform.id=openstack` for Metal3 compatibility and `net.ifnames=1` for predictable NIC naming.
 
@@ -29,10 +29,24 @@ The EIB definition sets `ignition.platform.id=openstack` for Metal3 compatibilit
 
 | Challenge | Root Cause | Solution Applied |
 |-----------|-----------|------------------|
-| Ignition format required | SL Micro uses Ignition configuration format, not cloud-init | `agent_config_format: ignition` in values.yaml |
-| Static IP allocation | SL Micro doesn't work with Metal3-ipam dynamic allocation (known issue) | `ip_preallocations` for explicit per-host IP assignment |
+| Ignition format required | SL Micro uses Ignition configuration format, not cloud-init | `cluster.agent_config_format: ignition` in values.yaml |
+| Static IP allocation | SL Micro doesn't work with Metal3-ipam dynamic allocation (known issue) | `ip_preallocations` for explicit per-host IP assignment (see below) |
 | User creation via Sylva | `additionalUserData` users not reliably applied to SL Micro | Create users directly in EIB image definition |
 | Cilium rke2-install.sh | Script contains unnecessary `sudo` that fails on minimal SL Micro | Manual fix (remove `sudo` from script) required |
+
+### Static IP Allocation: ip_preallocations Mechanism
+
+Since Metal3-ipam's dynamic IP allocation doesn't function correctly with SL Micro, explicit IP addresses must be pre-allocated for each BareMetalHost. This is configured per-host in the `baremetal_hosts` section:
+
+```yaml
+baremetal_hosts:
+  mgmt-server:
+    ip_preallocations:
+      primary: 10.160.1.32      # IP for the primary (production) network interface
+      provisioning: 10.150.1.110 # IP for the provisioning (Metal3) network interface
+```
+
+Each host requires both a `primary` IP (used for cluster communication) and a `provisioning` IP (used during Metal3 provisioning). The network pool ranges defined in `capm3.networks` (start/end) are effectively bypassed—the IPs come from those ranges but are assigned statically rather than dynamically.
 
 ### Longhorn Disk Provisioning
 
@@ -40,43 +54,48 @@ A positive finding: Longhorn disk provisioning works seamlessly with SL Micro. S
 
 ---
 
-## Project Context
-
-**Sylva 1.6.x** is an open-source project providing GitOps-based Kubernetes cluster lifecycle management for bare metal deployments. It uses Flux for continuous reconciliation, Kustomize for unit composition, and supports multiple infrastructure providers (CAPM3, CAPV, CAPD).
-
-**SUSE Edge 3.5** is a commercial Telco Cloud offering that includes hardened container images, enterprise support, and validated configurations. It shares technical foundations with Sylva but differs in deployment tooling, integration depth, and supported component versions.
-
-**Alignment Philosophy**: Configuration drift between Sylva and SUSE Edge is acceptable. The priority is ensuring chart and image provenance matches SUSE Edge sources, enabling consistency for support scenarios while preserving Sylva's OSS flexibility.
-
----
-
 ## Alignment Status Summary
 
 ### Fully Aligned Units
 
-The following units achieved full alignment with SUSE Edge 3.5 chart versions and container image registries:
+The following units achieved full alignment with SUSE Edge 3.5 chart versions and container image registries. Configuration extracted from `mgmt-cluster/vanilla-rke2-capm3/values.yaml`:
 
-| Unit | Chart Source | Image Registry | Notes |
-|------|-------------|----------------|-------|
-| MetalLB | OCI `registry.suse.com/edge/charts` | `registry.suse.com` | Three-block override pattern |
-| Metal3 | OCI `registry.suse.com/edge/charts` | `registry.suse.com` | Flux-only (no bootstrap HelmChart) |
-| Rancher | Prime chart repo | Built-in | Feature flags for Turtles enabled |
-| Longhorn | Rancher charts repo (unchanged) | `registry.suse.com` | Version pin + registry override |
-| Cilium | RKE2 charts repo (unchanged) | `registry.suse.com` | Version pin + registry override |
-| Multus | RKE2 charts repo (unchanged) | `registry.suse.com` | Version pin + registry override |
-| ingress-nginx | RKE2 charts repo (unchanged) | `registry.suse.com` | Version pin + registry override |
-| metrics-server | RKE2 charts repo (unchanged) | `registry.suse.com` | Version pin + registry override |
-| CoreDNS | RKE2 charts repo (unchanged) | `registry.suse.com` | Explicit image overrides (no `systemDefaultRegistry` support) |
-| KubeVirt | OCI `registry.suse.com/edge/charts` | Chart defaults | No image override needed |
-| KubeVirt CDI | OCI `registry.suse.com/edge/charts` | Chart defaults | Chart name mismatch handled |
+| Unit | Chart Source Override | Version Override | Image Registry Override | Notes |
+|------|----------------------|------------------|------------------------|-------|
+| MetalLB | `oci://registry.suse.com/edge/charts` | `305.0.1+up0.15.2` | `registry.suse.com/edge/3.5/*` | Bootstrap (`helm_oci_url`) + Flux + image overrides |
+| Metal3 | `oci://registry.suse.com/edge/charts` | `305.0.21+up0.13.0` | `registry.suse.com/edge/3.5/*` | No bootstrap component (Flux-only) |
+| Rancher | `https://charts.rancher.com/server-charts/prime` | `2.13.1` | Feature flags override | Prime chart repo, Turtles enabled |
+| Longhorn | (unchanged: Rancher repo) | `107.2.0+up1.10.1` | `registry.suse.com` via `systemDefaultRegistry` | OSS charts used; not AppCo catalog |
+| Longhorn CRD | (unchanged: Rancher repo) | `107.2.0+up1.10.1` | (none - CRD chart) | Version pin only |
+| Cilium | (unchanged: RKE2 repo) | `1.18.300` | `registry.suse.com` via `systemDefaultRegistry` | Also `cluster.coredns.helm_values` path |
+| Multus | (unchanged: RKE2 repo) | `v4.2.300` | `registry.suse.com` via `systemDefaultRegistry` | Version pin + registry |
+| ingress-nginx | (unchanged: RKE2 repo) | `4.13.400` | `registry.suse.com` via `systemDefaultRegistry` | Version pin + registry |
+| metrics-server | (unchanged: RKE2 repo) | `3.13.002` | `registry.suse.com` via `systemDefaultRegistry` | Version pin + registry |
+| CoreDNS | (unchanged: RKE2 repo) | `1.44.300` | Explicit `repository`/`tag` in `cluster.coredns.helm_values` | No `systemDefaultRegistry` support in chart |
+| KubeVirt | `oci://registry.suse.com/edge/charts` | `305.0.1+up0.6.0` | (chart defaults) | Both chart source AND version override |
+| KubeVirt CDI | `oci://registry.suse.com/edge/charts` | `305.0.1+up0.6.0` | (chart defaults) | Chart name mismatch + both overrides |
+| local-path-provisioner | (unchanged: upstream GitRepository) | (none) | `registry.suse.com/rancher/*` | Image override only; no SUSE chart exists |
+
+### Why Cluster-Level Configuration Is Required
+
+Some overrides must be placed in the `cluster` configuration block rather than the `units` section:
+
+**MetalLB (`cluster.helm_oci_url.metallb`)**: Sylva deploys MetalLB via two mechanisms—a bootstrap-time HelmChart baked into RKE2 node manifests, and a Flux HelmRelease for post-pivot lifecycle. The `helm_oci_url` setting controls the bootstrap component, which is created at cluster deployment time and cannot be modified afterward without redeploying.
+
+**CoreDNS (`cluster.coredns.helm_values`)**: The `rke2-coredns` chart does not support the `global.systemDefaultRegistry` mechanism used by other RKE2 charts. Image registry overrides must be specified explicitly via `image.repository` and `image.tag` fields, and the values path is `cluster.coredns.helm_values` (not under `units.coredns`).
+
+### Longhorn: OSS Charts vs AppCo Catalog
+
+SUSE Edge 3.5 ships "SUSE Storage" via the Rancher AppCo (Application Collection) catalog, which requires a subscription account. For this OSS Sylva deployment, the standard Rancher charts from `charts.rancher.io` were used instead, combined with SUSE registry images via `systemDefaultRegistry`. This achieves functional alignment without requiring commercial licensing.
+
+This approach is open for discussion: it provides SUSE-hardened images with OSS chart management, but does not use the exact SUSE Edge deployment mechanism.
 
 ### Architectural Constraints
 
 | Unit | Status | Explanation |
 |------|--------|-------------|
-| vSphere CSI | Upstream registry | Kustomize unit pulling from GitHub; no registry override mechanism via values.yaml. Images are version-identical to SUSE Edge mirrors; functional equivalence achieved for connected environments. |
-| local-path-provisioner | Upstream chart | SUSE Edge embeds this component in RKE2/k3s, no standalone chart exists. Images overridden to SUSE registry; chart source remains upstream GitRepository. |
-| NeuVector | Custom units | Deep Sylva integration prevented direct override. Alternative units created for SUSE Edge alignment (see Technical Challenges section). |
+| vSphere CSI | Not tested | Documented in `units-override/vsphere-csi-driver.md` but not validated in this deployment. Kustomize unit; no registry override mechanism via values.yaml. |
+| local-path-provisioner | Image-only alignment | SUSE Edge embeds this in RKE2/k3s; no standalone Helm chart exists in SUSE Edge catalog. Chart source remains upstream GitRepository. |
 
 ---
 
@@ -113,34 +132,17 @@ This ensures the Flux Kustomization reports "Ready" status without deploying an 
 
 **Bootstrap Process Preserved**: The bootstrap cluster uses Sylva's standard CAPI provider unchanged. Metal3/CAPM3 provisions BareMetalHosts normally. Only the management cluster sees the architectural shift.
 
-**Dependency Adjustments**: The `kyverno-policy-prevent-mgmt-cluster-delete` unit depends on CAPI CRDs being present. Since Turtles installs these asynchronously after Rancher starts, the initial deployment shows a timeout. Flux continues reconciling and the unit becomes Ready once CRDs are installed. This is cosmetic—the second run passes immediately.
+**Dependency Adjustment**: The `kyverno-policy-prevent-mgmt-cluster-delete` unit originally depended on CAPI CRDs being present. Since Turtles installs these asynchronously after Rancher starts, the unit's dependency was changed:
 
-### 2. NeuVector Deep Integration
+```yaml
+kyverno-policy-prevent-mgmt-cluster-delete:
+  depends_on:
+    rancher: true
+```
 
-**Challenge**: Sylva's NeuVector deployment is integrated with:
-- Keycloak SSO (OIDC configuration managed by `neuvector-init` unit)
-- Vault secrets (admin password, TLS certificates via external-secrets-operator)
-- Kyverno `add-sylva-ca` ClusterPolicy (mutates controller pods to inject `sylva-ca.crt` volume)
+This ensures the Kyverno policy waits for Rancher (which installs Turtles, which installs CAPI CRDs), resolving the timing issue. The timeout observed during initial deployment is no longer present.
 
-**Why Direct Override Wasn't Possible**:
-
-The Kyverno policy operates at Kubernetes admission time, injecting volumes into pods regardless of what the HelmRelease specifies. Setting `volumes: []` in HelmRelease values has no effect—the mutation happens after Helm renders templates. Disabling `neuvector-init` removes not only the Vault-managed secrets but also the namespace creation (handled conditionally by `namespace-defs` unit).
-
-Additionally, Sylva's defaults set image repositories using upstream naming (`neuvector/controller`). The Rancher chart uses different naming (`rancher/neuvector-controller`). With `registry: registry.rancher.com`, these produce mismatched paths. Sylva's deep-merge behavior preserves conflicting defaults even when attempting to override.
-
-**Solution**: Create custom units (`suse-neuvector-init`, `suse-neuvector-crd`, `suse-neuvector`) with entirely new names, bypassing Sylva defaults completely. This approach:
-- Creates namespace with required PSA labels (`privileged`)
-- Deploys CRD chart separately (Rancher chart requires this)
-- Deploys main chart with clean SUSE Edge configuration
-- Disables Flux drift detection (NeuVector rotates internal certificates)
-
-**Trade-off**:
-- **Gains**: SUSE Edge alignment—correct chart versions, SUSE registry images, Rancher SSO integration
-- **Loses**: Sylva security integrations—Keycloak OIDC, Vault-managed secrets, Sylva CA certificate injection
-
-This reflects different design priorities: Sylva's NeuVector is designed to integrate with Sylva's security infrastructure, while SUSE Edge's NeuVector uses Rancher's authentication. Both approaches are valid; alignment requires choosing one path.
-
-### 3. CAPI Provider Management Coexistence
+### 2. CAPI Provider Management Coexistence
 
 **Problem**: When both Sylva's Flux Kustomizations and Turtles' `CAPIProvider` custom resources manage the same infrastructure providers (capm3, metal3-ipam, cabpr), certificate reconciliation loops occur. Both controllers attempt to deploy identical resources in identical namespaces, causing:
 - Certificate instability (repeated deletion/recreation)
@@ -149,7 +151,7 @@ This reflects different design priorities: Sylva's NeuVector is designed to inte
 
 **Solution**:
 
-In the `rancher-turtles-providers` chart values, disable providers that Sylva manages:
+A custom unit `suse-rancher-turtles-providers` was created to deploy the Rancher Turtles providers chart with overlapping providers disabled:
 
 ```yaml
 providers:
@@ -163,7 +165,7 @@ providers:
     enabled: false   # Sylva manages cabpr controlplane
 ```
 
-Additionally, patch Sylva's provider images to match versions Turtles expects:
+Additionally, Sylva's provider images were patched via Kustomize `_patches` to match versions Turtles expects:
 
 | Provider | Sylva Default | Patched to Match Turtles |
 |----------|---------------|-------------------------|
@@ -177,6 +179,47 @@ Additionally, patch Sylva's provider images to match versions Turtles expects:
 | Provider certificates | Sylva (cert-manager) |
 | Cluster lifecycle (create, scale, upgrade, delete) | Turtles |
 | Cluster import to Rancher | Turtles |
+
+**Note**: The `suse-rancher-turtles-providers` unit is currently disabled (`enabled: false`) in the working configuration. Sylva's native provider units are active, and Rancher's bundled Turtles manages cluster lifecycle without additional provider configuration.
+
+### 3. NeuVector: Two Possible Approaches
+
+**Challenge**: Sylva's NeuVector deployment is integrated with:
+- Keycloak SSO (OIDC configuration managed by `neuvector-init` unit)
+- Vault secrets (admin password, TLS certificates via external-secrets-operator)
+- Kyverno `add-sylva-ca` ClusterPolicy (mutates controller pods to inject `sylva-ca.crt` volume)
+
+**Why SUSE Edge Alignment Is Complex**:
+
+The Kyverno policy operates at Kubernetes admission time, injecting volumes into pods regardless of what the HelmRelease specifies. Setting `volumes: []` in HelmRelease values has no effect—the mutation happens after Helm renders templates. Additionally, Sylva's defaults use upstream image naming (`neuvector/controller`) while the Rancher chart uses different naming (`rancher/neuvector-controller`), producing mismatched registry paths.
+
+**Approach A: Leave Sylva's Native NeuVector Unchanged** (current deployment)
+
+The working configuration uses Sylva's default NeuVector stack:
+
+```yaml
+units:
+  neuvector-init:
+    enabled: true
+  neuvector:
+    enabled: true
+```
+
+This preserves Sylva's security integrations (Keycloak SSO, Vault secrets, Sylva CA injection) but does not achieve SUSE Edge alignment for NeuVector. This approach is functional and suitable for deployments where Sylva's security infrastructure is valued.
+
+**Approach B: Custom Units for SUSE Edge Alignment** (documented but not deployed)
+
+Custom units (`suse-neuvector-init`, `suse-neuvector-crd`, `suse-neuvector`) can be created with entirely new names, bypassing Sylva defaults completely. This approach:
+- Creates namespace with required PSA labels (`privileged`)
+- Deploys CRD chart separately (Rancher chart requires this)
+- Deploys main chart with clean SUSE Edge configuration
+- Disables Flux drift detection (NeuVector rotates internal certificates)
+
+**Trade-off**:
+- **Gains**: SUSE Edge alignment—correct chart versions, SUSE registry images, Rancher SSO integration
+- **Loses**: Sylva security integrations—Keycloak OIDC, Vault-managed secrets, Sylva CA certificate injection
+
+This reflects different design priorities: Sylva's NeuVector integrates with Sylva's security infrastructure, while SUSE Edge's NeuVector uses Rancher's authentication. Both approaches are valid; alignment requires choosing one path. The choice depends on deployment priorities and is open for community discussion.
 
 ### 4. Chart Name Mismatches
 
@@ -207,7 +250,7 @@ A reusable checklist emerged from this work:
 | URL conventions differ | `units.<name>.helm_repo_url` excludes chart name; `cluster.helm_oci_url.<name>` includes it |
 | Deep merge preservation | Sylva defaults persist; explicit overrides needed for each changed value |
 | Bootstrap timing | `cluster.helm_oci_url` changes baked at cluster creation; redeploy required |
-| RKE2 charts vary | Some support `global.systemDefaultRegistry`, others require explicit image overrides |
+| RKE2 charts vary | Some support `global.systemDefaultRegistry`, others require explicit image overrides (CoreDNS) |
 
 ---
 
@@ -228,7 +271,7 @@ This work demonstrates Sylva's flexibility:
 - `_internal.mgmt_cluster` variable enables bootstrap/management differentiation without core changes
 - Unit templates system supports dependency injection and conditional enablement
 - Deep merge preserves sensible defaults while allowing targeted overrides
-- Kustomize patches can modify deployments without forking upstream manifests
+- Kustomize `_patches` can modify deployments without forking upstream manifests
 
 ### OSS vs Commercial Design Priorities
 
@@ -242,8 +285,8 @@ Focus on provenance—chart and image sources—for support scenarios. Configura
 
 | File | Content |
 |------|---------|
-| `units-override/*.md` | Detailed migration guides per component |
 | `mgmt-cluster/vanilla-rke2-capm3/values.yaml` | Working management cluster configuration |
 | `workload-cluster/my-rke2-capm3/values.yaml` | Workload cluster configuration (pending alignment) |
-| `Images/README.md` | SL Micro 6.2 image building process |
+| `units-override/*.md` | Detailed migration guides per component |
 | `units-override/rancher-turtles-investigation/*.md` | Detailed root cause analysis of certificate conflict |
+| `Images/README.md` | SL Micro 6.2 image building process |
