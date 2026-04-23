@@ -1,10 +1,10 @@
-# Aligning Sylva 1.6.x with SUSE Edge Telco Cloud 3.5: Technical Progress Report
+# Aligning Sylva 1.6.x with SUSE Edge 3.5: Technical Progress Report
 
 ## Executive Summary
 
-This effort aimed to align an open-source Sylva 1.6.x deployment with SUSE Edge Telco Cloud 3.5, the commercial Telco Cloud offering that shares a similar technical stack. The primary focus was ensuring Helm charts and container images originate from the same sources as SUSE Edge Telco Cloud, enabling consistency for support scenarios and knowledge transfer. Configuration drift between the two deployments is acceptable—the priority is provenance alignment, not identical configurations.
+This effort aimed to align an open-source Sylva 1.6.x deployment with SUSE Edge 3.5, the commercial Telco Cloud offering that shares a similar technical stack. The primary focus was ensuring Helm charts and container images originate from the same sources as SUSE Edge, enabling consistency for support scenarios and knowledge transfer. Configuration drift between the two deployments is acceptable—the priority is provenance alignment, not identical configurations.
 
-**Status**: A fully functional management cluster has been deployed with charts and images aligned to SUSE Edge Telco Cloud sources. Workload cluster deployment has been validated using the conventional Sylva workflow, with alignment work remaining as a straightforward next step.
+**Status**: A fully functional management cluster has been deployed with charts and images aligned to SUSE Edge sources. Workload cluster deployment has been validated using the conventional Sylva workflow, with alignment work remaining as a straightforward next step.
 
 **Key Contribution**: This work established a reusable methodology for unit migration and resolved the complex Rancher Turtles integration challenge, enabling peaceful coexistence between Sylva's CAPI provider management and Rancher's bundled Turtles operator.
 
@@ -14,13 +14,13 @@ This effort aimed to align an open-source Sylva 1.6.x deployment with SUSE Edge 
 
 ### Why SL Micro 6.2?
 
-SUSE Edge Telco Cloud 3.5 targets SL Micro as the deployment operating system. Aligning the OS layer ensures consistency with the commercial offering and validates Sylva's compatibility with SUSE's enterprise-grade minimal OS.
+SUSE Edge 3.5 targets SL Micro as the deployment operating system. Aligning the OS layer ensures consistency with the commercial offering and validates Sylva's compatibility with SUSE's enterprise-grade minimal OS.
 
 ### Image Building Process
 
 SL Micro images were built using a two-stage process:
 
-1. **KIWI Base Image**: Boot a SL Micro 6.2 system and use the SUSE Edge Telco Cloud kiwi-builder container (`registry.suse.com/edge/3.5/kiwi-builder:10.2.29.1`) to produce a raw base image
+1. **KIWI Base Image**: Boot a SL Micro 6.2 system and use the SUSE Edge kiwi-builder container (`registry.suse.com/edge/3.5/kiwi-builder:10.2.29.1`) to produce a raw base image
 2. **EIB Customization**: Edge Image Builder (`registry.suse.com/edge/3.4/edge-image-builder:1.3.0`) processes the base image, adding telco-specific packages (DPDK, dpdk-tools, pf-bb-config, tuned, cpupower, open-iscsi, jq) and configuring kernel arguments, systemd services, and user credentials
 
 The EIB definition sets `ignition.platform.id=openstack` for Metal3 compatibility and `net.ifnames=1` for predictable NIC naming.
@@ -58,7 +58,7 @@ A positive finding: Longhorn disk provisioning works seamlessly with SL Micro. S
 
 ### Fully Aligned Units
 
-The following units achieved full alignment with SUSE Edge Telco Cloud 3.5 chart versions and container image registries. Configuration extracted from `mgmt-cluster/vanilla-rke2-capm3/values.yaml`:
+The following units achieved full alignment with SUSE Edge 3.5 chart versions and container image registries. Configuration extracted from `mgmt-cluster/vanilla-rke2-capm3/values.yaml`:
 
 | Unit | Chart Source Override | Version Override | Image Registry Override | Notes |
 |------|----------------------|------------------|------------------------|-------|
@@ -67,7 +67,7 @@ The following units achieved full alignment with SUSE Edge Telco Cloud 3.5 chart
 | Rancher | `https://charts.rancher.com/server-charts/prime` | `2.13.1` | Feature flags override | Prime chart repo, Turtles enabled |
 | Longhorn | (unchanged: Rancher repo) | `107.2.0+up1.10.1` | `registry.suse.com` via `systemDefaultRegistry` | OSS charts used; not AppCo catalog |
 | Longhorn CRD | (unchanged: Rancher repo) | `107.2.0+up1.10.1` | (none - CRD chart) | Version pin only |
-| Cilium | (unchanged: RKE2 repo) | `1.18.300` | `registry.suse.com` via `systemDefaultRegistry` | Also `cluster.coredns.helm_values` path |
+| Cilium | (unchanged: RKE2 repo) | `1.18.300` | `registry.suse.com` via `systemDefaultRegistry` | Top-level `cilium_helm_values` key |
 | Multus | (unchanged: RKE2 repo) | `v4.2.300` | `registry.suse.com` via `systemDefaultRegistry` | Version pin + registry |
 | ingress-nginx | (unchanged: RKE2 repo) | `4.13.400` | `registry.suse.com` via `systemDefaultRegistry` | Version pin + registry |
 | metrics-server | (unchanged: RKE2 repo) | `3.13.002` | `registry.suse.com` via `systemDefaultRegistry` | Version pin + registry |
@@ -86,16 +86,16 @@ Some overrides must be placed in the `cluster` configuration block rather than t
 
 ### Longhorn: OSS Charts vs AppCo Catalog
 
-SUSE Edge Telco Cloud 3.5 ships "SUSE Storage" via the Rancher AppCo (Application Collection) catalog, which requires a subscription account. For this OSS Sylva deployment, the standard Rancher charts from `charts.rancher.io` were used instead, combined with SUSE registry images via `systemDefaultRegistry`. This achieves functional alignment without requiring commercial licensing.
+SUSE Edge 3.5 ships "SUSE Storage" via the Rancher AppCo (Application Collection) catalog, which requires a subscription account. For this OSS Sylva deployment, the standard Rancher charts from `charts.rancher.io` were used instead, combined with SUSE registry images via `systemDefaultRegistry`. This achieves functional alignment without requiring commercial licensing.
 
-This approach is open for discussion: it provides SUSE-hardened images with OSS chart management, but does not use the exact SUSE Edge Telco Cloud deployment mechanism.
+This approach is open for discussion: it provides SUSE-hardened images with OSS chart management, but does not use the exact SUSE Edge deployment mechanism.
 
 ### Architectural Constraints
 
 | Unit | Status | Explanation |
 |------|--------|-------------|
 | vSphere CSI | Not tested | Documented in `units-override/vsphere-csi-driver.md` but not validated in this deployment. Kustomize unit; no registry override mechanism via values.yaml. |
-| local-path-provisioner | Image-only alignment | SUSE Edge Telco Cloud embeds this in RKE2/k3s; no standalone Helm chart exists in SUSE Edge Telco Cloud catalog. Chart source remains upstream GitRepository. |
+| local-path-provisioner | Image-only alignment | SUSE Edge embeds this in RKE2/k3s; no standalone Helm chart exists in SUSE Edge catalog. Chart source remains upstream GitRepository. |
 
 ---
 
@@ -103,7 +103,7 @@ This approach is open for discussion: it provides SUSE-hardened images with OSS 
 
 ### 1. Rancher Turtles Integration (CAPI Architecture)
 
-**Context**: Rancher 2.13.1 (bundled with SUSE Edge Telco Cloud 3.5) includes Turtles v0.25.1, which installs CAPI core CRDs via a `CAPIProvider` custom resource. This differs fundamentally from Sylva's standalone `rancher-turtles` unit (v0.24.4), which does NOT install CAPI CRDs.
+**Context**: Rancher 2.13.1 (bundled with SUSE Edge 3.5) includes Turtles v0.25.1, which installs CAPI core CRDs via a `CAPIProvider` custom resource. This differs fundamentally from Sylva's standalone `rancher-turtles` unit (v0.24.4), which does NOT install CAPI CRDs.
 
 **Architecture Achieved**:
 
@@ -189,7 +189,7 @@ Additionally, Sylva's provider images were patched via Kustomize `_patches` to m
 - Vault secrets (admin password, TLS certificates via external-secrets-operator)
 - Kyverno `add-sylva-ca` ClusterPolicy (mutates controller pods to inject `sylva-ca.crt` volume)
 
-**Why SUSE Edge Telco Cloud Alignment Is Complex**:
+**Why SUSE Edge Alignment Is Complex**:
 
 The Kyverno policy operates at Kubernetes admission time, injecting volumes into pods regardless of what the HelmRelease specifies. Setting `volumes: []` in HelmRelease values has no effect—the mutation happens after Helm renders templates. Additionally, Sylva's defaults use upstream image naming (`neuvector/controller`) while the Rancher chart uses different naming (`rancher/neuvector-controller`), producing mismatched registry paths.
 
@@ -205,21 +205,21 @@ units:
     enabled: true
 ```
 
-This preserves Sylva's security integrations (Keycloak SSO, Vault secrets, Sylva CA injection) but does not achieve SUSE Edge Telco Cloud alignment for NeuVector. This approach is functional and suitable for deployments where Sylva's security infrastructure is valued.
+This preserves Sylva's security integrations (Keycloak SSO, Vault secrets, Sylva CA injection) but does not achieve SUSE Edge alignment for NeuVector. This approach is functional and suitable for deployments where Sylva's security infrastructure is valued.
 
-**Approach B: Custom Units for SUSE Edge Telco Cloud Alignment** (documented but not deployed)
+**Approach B: Custom Units for SUSE Edge Alignment** (documented but not deployed)
 
 Custom units (`suse-neuvector-init`, `suse-neuvector-crd`, `suse-neuvector`) can be created with entirely new names, bypassing Sylva defaults completely. This approach:
 - Creates namespace with required PSA labels (`privileged`)
 - Deploys CRD chart separately (Rancher chart requires this)
-- Deploys main chart with clean SUSE Edge Telco Cloud configuration
+- Deploys main chart with clean SUSE Edge configuration
 - Disables Flux drift detection (NeuVector rotates internal certificates)
 
 **Trade-off**:
-- **Gains**: SUSE Edge Telco Cloud alignment—correct chart versions, SUSE registry images, Rancher SSO integration
+- **Gains**: SUSE Edge alignment—correct chart versions, SUSE registry images, Rancher SSO integration
 - **Loses**: Sylva security integrations—Keycloak OIDC, Vault-managed secrets, Sylva CA certificate injection
 
-This reflects different design priorities: Sylva's NeuVector integrates with Sylva's security infrastructure, while SUSE Edge Telco Cloud's NeuVector uses Rancher's authentication. Both approaches are valid; alignment requires choosing one path. The choice depends on deployment priorities and is open for community discussion.
+This reflects different design priorities: Sylva's NeuVector integrates with Sylva's security infrastructure, while SUSE Edge's NeuVector uses Rancher's authentication. Both approaches are valid; alignment requires choosing one path. The choice depends on deployment priorities and is open for community discussion.
 
 ### 4. Chart Name Mismatches
 
@@ -258,7 +258,7 @@ A reusable checklist emerged from this work:
 
 A workload cluster was deployed successfully using Sylva's conventional workflow. The management cluster customization (CAPI architecture shift, chart/image alignment) did not block workload cluster creation.
 
-Alignment of workload cluster charts and images to SUSE Edge Telco Cloud sources is pending. Given the structural similarity between management and workload cluster configuration files, this is expected to be straightforward—applying similar overrides with workload-specific parameters.
+Alignment of workload cluster charts and images to SUSE Edge sources is pending. Given the structural similarity between management and workload cluster configuration files, this is expected to be straightforward—applying similar overrides with workload-specific parameters.
 
 ---
 
@@ -275,9 +275,9 @@ This work demonstrates Sylva's flexibility:
 
 ### OSS vs Commercial Design Priorities
 
-Full alignment isn't always possible or desirable. The NeuVector case illustrates that Sylva and SUSE Edge Telco Cloud have different integration philosophies—Sylva emphasizes its security infrastructure (Keycloak, Vault), while SUSE Edge Telco Cloud leverages Rancher's ecosystem. Both approaches serve their audiences.
+Full alignment isn't always possible or desirable. The NeuVector case illustrates that Sylva and SUSE Edge have different integration philosophies—Sylva emphasizes its security infrastructure (Keycloak, Vault), while SUSE Edge leverages Rancher's ecosystem. Both approaches serve their audiences.
 
-Focus on provenance—chart and image sources—for support scenarios. Configuration differences are acceptable when functional equivalence is achieved. This work provides a template for future alignment efforts, whether targeting SUSE Edge Telco Cloud releases or other commercial derivatives of the Sylva stack.
+Focus on provenance—chart and image sources—for support scenarios. Configuration differences are acceptable when functional equivalence is achieved. This work provides a template for future alignment efforts, whether targeting SUSE Edge releases or other commercial derivatives of the Sylva stack.
 
 ---
 
