@@ -32,7 +32,7 @@ The EIB definition sets `ignition.platform.id=openstack` for Metal3 compatibilit
 | Ignition format required | SL Micro uses Ignition configuration format, not cloud-init | `cluster.agent_config_format: ignition` in values.yaml |
 | Static IP allocation | SL Micro doesn't work with Metal3-ipam dynamic allocation (known issue) | `ip_preallocations` for explicit per-host IP assignment (see below) |
 | User creation via Sylva | `additionalUserData` users not reliably applied to SL Micro | Create users directly in EIB image definition |
-| Cilium rke2-install.sh | Script contains unnecessary `sudo` that fails on minimal SL Micro | Manual fix (remove `sudo` from script) required |
+| Cilium rke2-install.sh | Script contains unnecessary `sudo` that fails on minimal SL Micro | Manual fix (remove `sudo` from 'rke2-install.sh' script) required |
 
 ### Static IP Allocation: ip_preallocations Mechanism
 
@@ -237,7 +237,7 @@ Both must be set; neither alone is sufficient.
 
 A reusable checklist emerged from this work:
 
-1. **Find chart coordinates**: Registry URL, chart name, version tag (use `skopeo list-tags` for OCI)
+1. **Find chart coordinates**: Registry URL, chart name, version tag
 2. **Set `helm_repo_url`**: OCI path without chart name (Sylva auto-appends unit name)
 3. **Set version**: Use the `+` form (e.g., `305.0.1+up0.15.2`); Helm converts to OCI tag encoding
 4. **Set image overrides**: Point to SUSE registry paths via `<unit>_helm_values` or `helmrelease_spec.values`
