@@ -149,6 +149,27 @@ This ensures the Kyverno policy waits for Rancher (which installs Turtles, which
 - CA bundle mismatch (webhook configuration out of sync with server certificate)
 - Bootstrap failures with `x509: certificate signed by unknown authority`
 
+**Root Cause: Dual Management Conflict**
+
+When `suse-rancher-turtles-providers` is `enabled: true` during bootstrap:
+1. **Both** Sylva's Flux Kustomizations AND Turtles' CAPIProvider CRs deploy identical providers (capm3, metal3-ipam, cabpr) to identical namespaces
+2. This creates a **reconciliation war**: both controllers modify/delete/recreate the same resources
+3. Certificates get into a loop (revision 77+), webhook CA bundles become out of sync with server certs
+4. Result: `x509: certificate signed by unknown authority`
+
+**Why Post-Install Works**
+
+When enabled after management cluster deployment via `apply.sh`:
+1. Sylva's provider units are **already stable** (certificates provisioned, webhooks ready)
+2. The cluster unit has already been applied (webhooks already called successfully)
+3. No active reconciliation is happening at that moment
+4. Turtles "adopts" existing resources rather than fighting over them
+
+| Scenario | Result |
+|----------|--------|
+| Both enabled during bootstrap | **Fails** - concurrent deployment causes certificate loops |
+| turtles-providers enabled post-deployment | **Works** - Sylva's units already stable |
+
 **Solution**:
 
 A custom unit `suse-rancher-turtles-providers` was created to deploy the Rancher Turtles providers chart with overlapping providers disabled:
