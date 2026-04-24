@@ -1,0 +1,137 @@
+cluster_virtual_ip: 10.160.1.20
+
+os_images:
+  slmicro-6-2-custom:
+    uri: http://10.140.1.2:8080/eib-132-image-slmicro-telco.raw
+    filename: eib-132-image-slmicro-telco.raw
+    md5: 67c1b48a1cb47d59622a344d394be50c
+    sha256: f90c8a6ca706ab28fe5bdc91d36bbdce9fd3eb79dbcbad3136ba1dc09643ccf0
+    image-format: raw
+os_image_server_additional_selectors:
+  my-custom-images:
+    os: slemicro
+    oci-image-registry-key: custom
+
+units:
+  logging:
+    enabled: false                                                              # saving resources
+  monitoring:
+    enabled: false                                                              # saving resources
+  harbor:
+    enabled: false  
+  multus:
+    enabled: false
+cluster:
+  capi_providers:
+    infra_provider: capm3
+    bootstrap_provider: cabpr
+  agent_config_format: ignition
+  k8s_version: v1.34.2+rke2r1 
+
+  # To allow cpuManager, enable it when kubevirt is enabled with feature gate CPUManager
+  # kubelet_extra_args:
+  #   max-pods: "228"
+  #   #node-labels: "feature.node.kubernetes.io/network-sriov.capable=true" ##should be set automatically by rancher-nfd
+  #   feature-gates: "TopologyManager=true,CPUManager=true"
+  #   topology-manager-policy: "best-effort"
+  #   cpu-manager-policy: "static"
+  #   system-reserved: "cpu=100m"
+  #   kube-reserved: "cpu=100m"
+
+  control_plane_replicas: 1
+
+  rke2:
+    additionalUserData:
+      config: # String to allows users to specify additional cloud-init configuration
+        users:
+          - name: sylva
+            groups: users,sylva-ops
+            sudo: ALL=(ALL) NOPASSWD:ALL
+            shell: /bin/bash
+            lock_passwd: false
+            passwd: "$6$gV6qAP8WBYiCiI/O$UpjaolToiNVzlI65/41bUyUp.8rJ1FPhRMN8ihwnZK8vpDDgHn8sodKkYIWnNwqh0qunEB9aspl8M45ZXYT6G1" # (copy pasted from /etc/shadow or created with "mkpasswd" --method=SHA-512 --stdin")
+            ssh_authorized_keys:
+              - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOxAWTRqROr4/FiM1FN0d1t5Cz2/+LkI+8BFw84+8tpy andrea@thinkpad-ps14s-gen4
+
+  capm3:
+    image_key: slmicro-6-2-custom
+    networks:
+      primary:
+        subnet: 10.160.1.0/24
+        gateway: 10.160.1.254
+        start: 10.160.1.32     # Static IP Addresses used to be dynamically assigned
+        end: 10.160.1.34       # to baremetal hosts after deployment
+      provisioning:
+        subnet: 10.150.1.0/24
+        start: 10.150.1.110   # Static IP Addresses used to be dynamically assigned
+        end: 10.150.1.112     # to baremetal hosts after deployment
+    dns_servers:
+    - 192.168.1.254
+    - 8.8.8.8
+  
+  control_plane:
+    capm3:
+      hostSelector:  # criteria for matching labels on BareMetalHost objects defined by baremetal_hosts value
+        matchLabels:
+          cluster-role: control-plane
+      networks:
+        primary:
+          interface: enp3s0
+        provisioning:
+          interface: enp4s0
+    network_interfaces:
+      enp3s0:
+        type: phy
+      enp4s0:
+        type: phy
+
+  machine_deployment_default:
+    capm3:
+      hostSelector:
+        matchLabels:
+          cluster-role: worker
+      networks:
+        primary:
+          interface: enp3s0
+        provisioning:
+          interface: enp4s0
+
+  machine_deployments:
+    md0:
+      replicas: 0
+      network_interfaces:
+        enp3s0:
+          type: phy
+        enp4s0:
+          type: phy
+
+  baremetal_host_default:
+    longhorn_disk_config:
+      - path: "/var/longhorn/disks/disk_by-path_virtio-pci-0000:09:00.0"
+        storageReserved: 0
+        allowScheduling: true
+        tags:
+          - vhdd
+          - fast
+    bmh_spec:
+      online: true     # necessary in sylva 1.6.x
+      externallyProvisioned: false
+      bmc:
+        disableCertificateVerification: true
+      rootDeviceHints:  # https://github.com/metal3-io/baremetal-operator/blob/main/docs/api.md#rootdevicehints
+        deviceName: /dev/vda
+  baremetal_hosts:  # corresponding credentials need to be set in secrets.yaml
+    ctrl-1:
+      bmh_metadata:
+        labels:
+          cluster-role: control-plane
+      ip_preallocations:     # necessary in order to have sl micro cope with static ip assignment; sl micro doesn't work with metal3-ipam (known issue)
+        primary: 10.160.1.33
+        provisioning: 10.150.1.111
+      bmh_spec:
+        description: workload cluster
+        bmc:
+          address: redfish-virtualmedia+http://10.140.1.2:8000/redfish/v1/Systems/26766e7e-ccde-4dc0-afcf-46e9fc9198e7
+          disableCertificateVerification: true
+        bootMACAddress: aa:aa:aa:bb:bb:5b
+
