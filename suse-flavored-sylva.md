@@ -279,8 +279,6 @@ A reusable checklist emerged from this work:
 
 A workload cluster was deployed successfully using Sylva's conventional workflow. The management cluster customization (CAPI architecture shift, chart/image alignment) did not block workload cluster creation.
 
-Alignment of workload cluster charts and images to SUSE Edge sources is pending. Given the structural similarity between management and workload cluster configuration files, this is expected to be straightforward—applying similar overrides with workload-specific parameters.
-
 ---
 
 ## Lessons for the Community
@@ -299,6 +297,29 @@ This work demonstrates Sylva's flexibility:
 Full alignment isn't always possible or desirable. The NeuVector case illustrates that Sylva and SUSE Edge have different integration philosophies—Sylva emphasizes its security infrastructure (Keycloak, Vault), while SUSE Edge leverages Rancher's ecosystem. Both approaches serve their audiences.
 
 Focus on provenance—chart and image sources—for support scenarios. Configuration differences are acceptable when functional equivalence is achieved. This work provides a template for future alignment efforts, whether targeting SUSE Edge releases or other commercial derivatives of the Sylva stack.
+
+---
+
+## Open Topics for Discussion
+
+| Topic | Status | Notes |
+|-------|--------|-------|
+| SLMicro 6.2 image customization | Limitation | EIB required; no install-time customization |
+| Longhorn vs SUSE Storage | Design choice | OSS charts used; AppCo catalog requires subscription |
+| CAPI → Turtles architecture | Question | Is the dummy-CAPI approach the right solution? |
+| NeuVector alignment | Opportunity | Helm chart re-engineering would simplify SUSE Edge alignment |
+| CAPI Provider dual management | Complexity | Sylva + Turtles both manage providers; could streamline via collaboration |
+| Calico issues (Jonas) | Unresolved | Not documented in this effort |
+| rke2-install.sh with SLMicro 6.2 | Bug | Cilium install script contains unnecessary `sudo` |
+
+---
+
+## Next Steps
+
+| Task | Description |
+|------|-------------|
+| Workload cluster alignment | Apply similar chart/image overrides to workload cluster configuration |
+| Functional testing | Validate all aligned components work correctly in production scenarios |
 
 ---
 
