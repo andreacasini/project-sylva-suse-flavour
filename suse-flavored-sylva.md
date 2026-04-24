@@ -33,7 +33,7 @@ The EIB definition sets `ignition.platform.id=openstack` for Metal3 compatibilit
 | Static IP allocation | SL Micro doesn't work with Metal3-ipam dynamic allocation (known issue) | `ip_preallocations` for explicit per-host IP assignment (see below) |
 | User creation via Sylva | `additionalUserData` users not reliably applied to SL Micro | Create users directly in EIB image definition |
 | Cilium rke2-install.sh | Script contains unnecessary `sudo` that fails on minimal SL Micro | Manual fix (remove `sudo` from 'rke2-install.sh' script) required |
-| Calico CNI | The rke2-calico Helm Chart's fields natOutgoing and backend are invalid and makes installation fail | No solution currently |
+| Calico CNI | The rke2-calico Helm Chart's fields natOutgoing and backend are invalid and makes installation fail | Fixed in later versions of the chart |
 
 ### Static IP Allocation: ip_preallocations Mechanism
 
