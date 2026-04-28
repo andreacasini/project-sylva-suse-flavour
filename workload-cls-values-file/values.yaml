@@ -12,6 +12,16 @@ os_image_server_additional_selectors:
     os: slemicro
     oci-image-registry-key: custom
 
+metallb_helm_values:
+  controller:
+    image:
+      repository: registry.suse.com/edge/3.5/metallb-controller
+      tag: v0.15.2
+  speaker:
+    image:
+      repository: registry.suse.com/edge/3.5/metallb-speaker
+      tag: v0.15.2
+
 units:
   logging:
     enabled: false                                                              # saving resources
@@ -19,9 +29,102 @@ units:
     enabled: false                                                              # saving resources
   harbor:
     enabled: false  
+  coredns:
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "1.44.300"
   multus:
-    enabled: false
+    enabled: true
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "v4.2.300"
+      values:
+        global:
+          systemDefaultRegistry: registry.suse.com
+  metallb:
+    helm_repo_url: oci://registry.suse.com/edge/charts
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "305.0.1+up0.15.2"
+  longhorn-crd:
+    enabled: true
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "107.2.0+up1.10.1"
+  longhorn:
+    enabled: true
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "107.2.0+up1.10.1"
+      values:
+        persistence:
+          defaultClassReplicaCount: 1
+        global:
+          cattle:
+            systemDefaultRegistry: registry.suse.com
+  # local-path-provisioner:
+  #   helmrelease_spec:
+  #     values:
+  #       image:
+  #         repository: registry.suse.com/rancher/local-path-provisioner
+  #         tag: v0.0.32
+  #       helperImage:
+  #         repository: registry.suse.com/rancher/mirrored-library-busybox
+  #         tag: "1.37.0"
+  #       nodePathMap:
+  #         - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+  #           paths:
+  #             - /var/lib/kubelet
+  ingress-nginx:
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "4.13.400"
+      values:
+        global:
+          systemDefaultRegistry: registry.suse.com
+  metrics-server:
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "3.13.002"
+      values:
+        global:
+          systemDefaultRegistry: registry.suse.com
+  kubevirt:
+    enabled: false                                                              # tested but turned off to save resources
+    helm_repo_url: oci://registry.suse.com/edge/charts
+    helmrelease_spec:
+      chart:
+        spec:
+          version: "305.0.1+up0.6.0"
+  kubevirt-cdi:
+    enabled: false                                                              # tested but turned off to save resources
+    helm_repo_url: oci://registry.suse.com/edge/charts
+    helm_chart_artifact_name: cdi
+    helmrelease_spec:
+      chart:
+        spec:
+          chart: cdi
+          version: "305.0.1+up0.6.0"
+
 cluster:
+  helm_oci_url:
+    metallb: oci://registry.suse.com/edge/charts/metallb
+  coredns:
+    helm_values:
+      image:
+        repository: registry.suse.com/rancher/hardened-coredns
+        tag: "v1.13.1-build20251015"
+      autoscaler:
+        image:
+          repository: registry.suse.com/rancher/hardened-cluster-autoscaler
+          tag: "v1.10.2-build20251015"
   capi_providers:
     infra_provider: capm3
     bootstrap_provider: cabpr
